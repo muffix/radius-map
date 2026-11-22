@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radius Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; }
+    #map { position: absolute; inset: 0; }
+    #panel {
+      position: absolute; top: 12px; right: 12px; z-index: 1000;
+      background: #fff; padding: 14px 16px; border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, .2); font-size: 14px; color: #222;
+    }
+    #panel label {
+      display: block; margin-bottom: 6px;
+      font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #666;
+    }
+    /* Input and unit select share one rounded border so they read as a single field. */
+    #panel .field { display: flex; border: 1px solid #c8c8c8; border-radius: 8px; overflow: hidden; }
+    #panel .field:focus-within { border-color: #2a6fdb; box-shadow: 0 0 0 3px rgba(42, 111, 219, .2); }
+    #panel input, #panel select {
+      font: inherit; border: 0; outline: 0; padding: 7px 9px; background: #fff;
+    }
+    #panel input { width: 6em; }
+    #panel select { border-left: 1px solid #c8c8c8; background: #f6f6f6; cursor: pointer; }
+    /* Bottom offset keeps clear of Leaflet's attribution line. */
+    #locate-box {
+      position: absolute; bottom: 36px; right: 12px; z-index: 1000;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-size: 14px;
+    }
+    #locate-error { color: #d33; background: #fff; border-radius: 4px; }
+    #locate-error:empty { display: none; }
+    #locate { display: flex; padding: 6px; cursor: pointer; }
+    #panel .field:has(input:invalid) { border-color: #d33; box-shadow: 0 0 0 3px rgba(221, 51, 51, .2); }
+    #coords { margin-top: 12px; padding-top: 10px; border-top: 1px solid #e6e6e6; font-size: 12px; line-height: 1.5; color: #666; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="panel">
+    <label for="radius">Radius</label>
+    <div class="field">
+      <input id="radius" type="number" step="any" value="500">
+      <select id="unit" aria-label="Radius unit">
+        <option value="1" selected>m</option>
+        <option value="1000">km</option>
+      </select>
+    </div>
+    <div id="coords">Click the map to add a circle.<br>Right-click one to remove it.</div>
+  </div>
+  <div id="locate-box">
+    <div id="locate-error"></div>
+    <button id="locate" type="button" title="Re-center on my location" aria-label="Re-center on my location">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="7"/>
+        <circle cx="12" cy="12" r="2" fill="currentColor"/>
+        <path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>
+      </svg>
+    </button>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    const map = L.map('map').setView([51.1657, 10.4515], 6);
+
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(map);
+
+    // Zoom to the user's location if the browser grants it; otherwise keep the default view.
+    const locateError = document.getElementById('locate-error');
+    map.on('locationfound', (e) => {
+      locateError.textContent = '';
+      map.setView(e.latlng, 18);
+    });
+    map.on('locationerror', (e) => { locateError.textContent = e.message; });
+    map.locate();
+    document.getElementById('locate').addEventListener('click', () => map.locate());
+
+    const radiusInput = document.getElementById('radius');
+    const unitSelect = document.getElementById('unit');
+    const MAX_RADIUS_M = 20_000_000; // roughly half Earth's circumference
+    const coords = document.getElementById('coords');
+
+    // Returns radius in metres, or null if the input is invalid.
+    function radiusMeters() {
+      // Reset first so a stale custom error doesn't mask native validity (e.g. garbage input).
+      radiusInput.setCustomValidity('');
+      if (!radiusInput.checkValidity() || radiusInput.value === '') return null;
+      const meters = Number(radiusInput.value) * Number(unitSelect.value);
+      if (!(meters > 0 && meters <= MAX_RADIUS_M)) {
+        radiusInput.setCustomValidity('Radius must be greater than 0 and at most 20,000 km.');
+        return null;
+      }
+      return meters;
+    }
+
+    // deliberate: circles live only in memory and are lost on reload; persist to localStorage if needed.
+    function addCircle(latlng) {
+      const r = radiusMeters();
+      if (r === null) return;
+      // A marker and circle form one group so right-clicking either removes both.
+      const group = L.featureGroup([L.marker(latlng), L.circle(latlng, { radius: r })]).addTo(map);
+      group.on('contextmenu', () => group.remove());
+      coords.textContent = `${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`;
+    }
+
+    map.on('click', (e) => addCircle(e.latlng));
+
+    // Re-validate on edit so the red outline tracks the input; existing circles keep their radius.
+    radiusInput.addEventListener('input', radiusMeters);
+    unitSelect.addEventListener('change', radiusMeters);
+  </script>
+</body>
+</html>
