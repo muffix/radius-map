@@ -14,7 +14,7 @@ Each circle keeps the radius it was drawn with. Circles are not saved, so a relo
 
 ## Run locally
 
-The site is a single static file, `index.html`, with no build step. Serve the folder over HTTP:
+The site is static (`index.html` and `favicon.svg`), with no build step. Serve the folder over HTTP:
 
 ```
 python3 -m http.server 8000
